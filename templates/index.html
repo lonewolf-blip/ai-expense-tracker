@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Expense Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+{% set colors = {'Food':'#ffb454','Transport':'#5ec2ff','Shopping':'#c792ff','Bills':'#ff7a8a','Health':'#5eead4','Entertainment':'#f472b6','Other':'#94a3b8'} %}
+{% set pct = (month_total / budget * 100) if (budget and month) else 0 %}
+{% set state = 'bad' if pct > 100 else ('warn' if pct >= 80 else 'ok') %}
+<div class="shell">
+  <header class="top"><span class="mark"></span><span class="brand">AI Expense Tracker</span></header>
+
+  {% for m in get_flashed_messages() %}<p class="flash" role="status">{{ m }}</p>{% endfor %}
+
+  <div class="layout">
+    <div class="main">
+      <section class="panel hero">
+        <p class="muted">{% if month %}Spent in {{ month }}{% else %}Spent in total{% endif %}{% if category %}, {{ category }}{% endif %}</p>
+        <p class="amount"><span class="cur">{{ cur }}</span>{{ "{:,.2f}".format(total) }}</p>
+        {% if budget and month %}
+        <div class="budget {{ state }}">
+          <div class="bar" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ [pct, 100]|min|round|int }}"><span style="--w: {{ [pct, 100]|min|round(1) }}%"></span></div>
+          {% if pct > 100 %}<p role="alert">Over budget by {{ cur }}{{ "{:,.2f}".format(month_total - budget) }} this month.</p>
+          {% else %}<p>{{ cur }}{{ "{:,.2f}".format(budget - month_total) }} left of your {{ cur }}{{ "{:,.0f}".format(budget) }} budget ({{ pct|round|int }}% used).</p>{% endif %}
+        </div>
+        {% endif %}
+        <form action="{{ url_for('budget') }}" method="post" class="setbudget">
+          <input type="number" name="budget" step="1" min="0" aria-label="Monthly budget in rupees" placeholder="Monthly budget ({{ cur }})" value="{{ budget|int if budget else '' }}">
+          <button type="submit" class="ghost">Save budget</button>
+        </form>
+      </section>
+
+      <section class="panel list">
+        <h2>Expenses</h2>
+        <div class="filters">
+          <form method="get" id="monthform">
+            <input type="hidden" name="category" value="{{ category }}">
+            <input type="month" name="month" value="{{ month }}" aria-label="Month" onchange="this.form.submit()">
+          </form>
+          <a class="chip {{ 'on' if not category }}" href="{{ url_for('index', month=month) }}">All</a>
+          {% for c in categories %}
+            <a class="chip {{ 'on' if c == category }}" href="{{ url_for('index', month=month, category=c) }}"><span class="dot" style="--c: {{ colors[c] }}"></span>{{ c }}</a>
+          {% endfor %}
+          <span class="tools">
+            <a class="btn ghost" href="{{ url_for('index', month='', category=category) }}">All time</a>
+            <a class="btn ghost" href="{{ url_for('export', month=month, category=category) }}">Download CSV</a>
+          </span>
+        </div>
+        {% if expenses %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Category</th><th>Note</th><th class="num">Amount</th><th></th></tr></thead>
+            <tbody>
+            {% for e in expenses %}
+              <tr>
+                <td>{{ e.date }}</td>
+                <td><span class="cat"><span class="dot" style="--c: {{ colors.get(e.category, '#94a3b8') }}"></span>{{ e.category }}</span></td>
+                <td>{{ e.note }}</td>
+                <td class="num">{{ cur }}{{ "{:,.2f}".format(e.amount) }}</td>
+                <td class="actions">
+                  <a href="{{ url_for('edit', id=e.id) }}">Edit</a>
+                  <form action="{{ url_for('delete', id=e.id) }}" method="post" onsubmit="return confirm('Delete this expense?')">
+                    <button type="submit" class="link danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="empty">No expenses for this filter yet. Add one with the form, or describe it to the AI assistant.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="side">
+      <section class="panel add">
+        <h2>Add expense</h2>
+        <form action="{{ url_for('add') }}" method="post" class="stack">
+          <div class="row2">
+            <label>Amount <input type="number" name="amount" step="0.01" min="0.01" required></label>
+            <label>Date <input type="date" name="date" value="{{ today }}" required></label>
+          </div>
+          <label>Category
+            <select name="category" required>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select>
+          </label>
+          <label>Note <input type="text" name="note" maxlength="100"></label>
+          <button type="submit">Add expense</button>
+        </form>
+      </section>
+
+      <section class="panel ai" id="ai-panel" data-month="{{ month }}">
+        <h2>AI assistant</h2>
+        <form action="{{ url_for('ai_add') }}" method="post" class="stack">
+          <label>Describe an expense
+            <input type="text" name="text" maxlength="300" placeholder="spent 250 on lunch with friends yesterday" required>
+          </label>
+          <button type="submit">Add with AI</button>
+        </form>
+        <hr class="divider">
+        <button type="button" id="insights-btn" class="ghost">Get insights for {{ month or 'this month' }}</button>
+        <p id="insights-out" class="ai-out" hidden></p>
+        <hr class="divider">
+        <form id="ask-form" class="stack">
+          <label>Ask about your spending
+            <input type="text" name="question" maxlength="200" placeholder="How much did I spend on food in October?" required>
+          </label>
+          <button type="submit" class="ghost">Ask</button>
+        </form>
+        <p id="ask-out" class="ai-out" hidden></p>
+      </section>
+
+      {% if by_cat %}
+      <section class="panel chart">
+        <h2>Spending by category</h2>
+        <div class="chart-box"><canvas id="chart" aria-label="Doughnut chart of spending by category" role="img"></canvas></div>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if by_cat %}
+<script>
+  const css = getComputedStyle(document.documentElement);
+  const colors = {{ colors|tojson }};
+  const labels = {{ by_cat.keys()|list|tojson }};
+  Chart.defaults.color = css.getPropertyValue("--muted").trim();
+  Chart.defaults.font.family = '"DM Sans", system-ui, sans-serif';
+  new Chart(document.getElementById("chart"), {
+    type: "doughnut",
+    data: { labels, datasets: [{ data: {{ by_cat.values()|list|tojson }},
+      backgroundColor: labels.map(l => colors[l] || "#94a3b8"),
+      borderColor: css.getPropertyValue("--surface").trim(), borderWidth: 3 }] },
+    options: { maintainAspectRatio: false, cutout: "68%",
+      plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 8, padding: 14 } } } }
+  });
+</script>
+{% endif %}
+<script src="{{ url_for('static', filename='ai.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit expense</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="shell narrow">
+  <header class="top"><span class="mark"></span><span class="brand">Edit expense</span></header>
+  {% for m in get_flashed_messages() %}<p class="flash" role="alert">{{ m }}</p>{% endfor %}
+  <section class="panel">
+    <form method="post" class="stack">
+      <div class="row2">
+        <label>Amount ({{ cur }}) <input type="number" name="amount" step="0.01" min="0.01" value="{{ e.amount }}" required></label>
+        <label>Date <input type="date" name="date" value="{{ e.date }}" required></label>
+      </div>
+      <label>Category
+        <select name="category">{% for c in categories %}<option {{ 'selected' if c == e.category }}>{{ c }}</option>{% endfor %}</select>
+      </label>
+      <label>Note <input type="text" name="note" maxlength="100" value="{{ e.note or '' }}"></label>
+      <div class="row2">
+        <button type="submit">Save changes</button>
+        <a class="btn ghost" href="{{ url_for('index') }}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
+</body>
+</html>
